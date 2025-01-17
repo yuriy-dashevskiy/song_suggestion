@@ -124,29 +124,31 @@ def msPost_login_menu_choice_2(userName):
 
 def msPost_login_menu_choice_3(userName):
 
-    print(userName);
     conn = msGet_DB_Connection();
     c = msGet_DB_Cursor(conn);
     userIdQueryExec = c.execute('SELECT user_id FROM users WHERE user_name = ?', (str(userName),));
-    print('query1');
     userID = userIdQueryExec.fetchone()[0];
     msClose_DB_Connection(c, conn);
     conn = msGet_DB_Connection();
     c = msGet_DB_Cursor(conn);
     playlistsQueryExec = c.execute('SELECT playlist_id FROM playlists WHERE user_id = ?', (userID,));
-    print('query2');
     playlists = playlistsQueryExec.fetchall();
     msClose_DB_Connection(c, conn);
-    for playlist in playlists:
-        print(playlist[0]);
+    if(playlists == []):
+        print("You need to have at least one playlist saved to display.");
+    else:
+        for playlist in playlists:
+            print(playlist[0]);
 
 def msPost_login_Menu(userName):
     msPost_login_menu_headline();
     choice = int(input("Please choose a option: "));
     while(True):
         if choice == 1:
+            msPost_login_menu_choice_1(userName)
             break;
         if choice == 2:
+            msPost_login_menu_choice_2(userName)
             break;
         if choice == 3:
             msPost_login_menu_choice_3(userName);
