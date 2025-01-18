@@ -1,6 +1,7 @@
 import spotipy
 import hashlib
 import sqlite3
+import re
 from spotipy.oauth2 import SpotifyOAuth
 import spotify_api_keys as keys
 
@@ -53,34 +54,45 @@ def msUser_Login():
     return userName;
     
 def msCreate_New_User():
+    # handles creation of new user to add to the users table
     
     print("New User");
-    userNameInput = input('Enter new user name: ');
+    user_name = input('Enter new user name: ');
     while(True):
-        conn = msGet_DB_Connection();
-        c = msGet_DB_Cursor(conn);
-        queryExecute = c.execute('SELECT * FROM users WHERE user_name = ?;', (userNameInput,));
-        userRecord = queryExecute.fetchone();
-        msClose_DB_Connection(c, conn);
-        if(userRecord is None):
+        user_record = ms_Get_Record_Of_User_In_Users_Table(user_name);
+        if(user_record is None):
             #print('Success');
             break;
         else:
-            userNameInput = input('Please enter a user name that is not taken: ');
+            user_name = input('Please enter a user name that is not taken: ');
     while(True):
-        userPassInput = input('Please enter your password: ');
-        hashInput = hashlib.sha224(userPassInput.encode('utf-8')).hexdigest();
-        #print(userNameInput);
-        #print(hashInput);
-        conn = msGet_DB_Connection();
-        c = msGet_DB_Cursor(conn);
-        queryExecute = c.execute('SELECT MAX(user_id) FROM users');
-        maxID = int(queryExecute.fetchone()[0]);
-        c.execute('INSERT INTO users(user_id, user_name, password) VALUES (?,?,?)',(maxID + 1, userNameInput, hashInput));
-        conn.commit();
-        msClose_DB_Connection(c, conn);
+        user_pass_input = input('Please enter your password: ');
+        user_pass_hash = hashlib.sha224(user_pass_input.encode('utf-8')).hexdigest();
+        ms_Insert_New_User_Into_Users(user_name,user_pass_hash);
+        
         break;
-    return userNameInput;
+    return user_name;
+
+def ms_Get_Record_Of_User_In_Users_Table(user_name):
+    # returns empty array or one item array of the user in users table
+
+    conn = msGet_DB_Connection();
+    c = msGet_DB_Cursor(conn);
+    queryExecute = c.execute('SELECT * FROM users WHERE user_name = ?;', (user_name,));
+    user_record = queryExecute.fetchone();
+    msClose_DB_Connection(c, conn);
+    return user_record;
+
+def ms_Insert_New_User_Into_Users(user_name,password):
+    #inserts new user into users table
+
+    conn = msGet_DB_Connection();
+    c = msGet_DB_Cursor(conn);
+    queryExecute = c.execute('SELECT MAX(user_id) FROM users');
+    maxID = int(queryExecute.fetchone()[0]);
+    c.execute('INSERT INTO users(user_id, user_name, password) VALUES (?,?,?)',(maxID + 1, user_name, password));
+    conn.commit();
+    msClose_DB_Connection(c, conn);
 
 def msLogin_Existing_User():
     
@@ -97,76 +109,205 @@ def msLogin_Existing_User():
         conn.commit();
         msClose_DB_Connection(c, conn);
         if(result is None):
-            print("Please type in a valid user name and password");
+            print('Please type in a valid user name and password');
             userNameInput = input('User Name: ');
             userPassInput = input('Password: ');
             userPassHash = hashlib.sha224(userPassInput.encode('utf-8')).hexdigest();
         else:
-            print("Successfully logged in");
+            print('Successfully logged in');
             break;
     return userNameInput;
+
 def msPost_login_menu_headline():
     
-    print("Welcome to music suggestions");
-    print("What option would you like to pick");
-    print("Option 1: Add playlist to your playlists");
-    print("Option 2: Display all tracks in a specific playlist");
-    print("Option 3: Display all of your playists");
-    print("Option 4: Exit");
-                  
-def msPost_login_menu_choice_1(userName):
-    
-    return 0;
+    print('Welcome to music suggestions');
+    print('What option would you like to pick');
+    print('Option 1: Add playlist to your playlists');
+    print('Option 2: Display all tracks in a specific playlist');
+    print('Option 3: Display all of your playists');
+    print('Option 4: Exit');
+
+def is_valid_playlist_id(playlist_id):
+    # returns boolean if playlist id is a valid spotify playlist id
+    try:
+        sp.playlist(playlist_id);
+        return True;
+    except spotipy.exceptions.SpotifyException:
+        return False;     
+             
+def msPost_login_menu_choice_1(user_name):
+    # allows user to add a playlist to their list of playlists using spotify id or spotify url
+
+    print('Please choose an option for adding a playlist');
+    print('Option 1: Enter unique spotify id (found after /playlists/ in url and before # or ?si= if present)');
+    print('Option 2: Enter the spotify playlist url.');
+    choice = int(input('Enter 1 or 2 for your choice: '));
+    while(True):
+        if choice == 1:
+            msHandle_User_Playlist_ID_Entry(user_name);
+            break;
+        elif choice == 2:
+            msHandle_User_Playlist_URL_Entry(user_name)
+            break;
+        else:
+            choice = int(input('Please try again. Enter 1 or 2 for your choice.'));
+
+def msHandle_User_Playlist_URL_Entry(user_name):
+    #handles user input of spotify playlist url and decides if playlist needs to be added or is already added
+
+    playlist_id = '';
+    url = input('Please enter the spotify playlist url: ');
+    while(True):
+        if url.find('open.spotify.com/playlist/') != -1:
+            print('Valid spotify playlist url has been entered. Checking if playlist is added for user: ' + user_name);
+            url_parts = url.split('playlist/')[-1];
+            match = re.search(r'[^a-zA-Z0-9]', url_parts);
+            if match:
+                playlist_id = url_parts[:match.start()];
+            else:
+                playlist_id = (url_parts);
+            playlist_record = msGet_Playlist_In_Playlists_Table(playlist_id, user_name);
+            if(playlist_record is None):
+                print('Adding playlist to your list of playlists. Returning to main menu.');
+                msInsert_Playlist_Record_Into_Playlists(playlist_id, user_name);
+                msPost_login_menu_headline();
+                break;
+            else:
+                print('Playlist is already in your list of playlists. Returning to main menu.');
+                msPost_login_menu_headline();
+                break;
+            break;
+        else:
+            url = input('Please enter a valid spotify playlist url');
+
+def msHandle_User_Playlist_ID_Entry(user_name):
+    #handles user input of spotify playlist id entry and decides if playlist needs to be added or is already added
+
+    playlist_id = input("Please enter spotify playlist id: ");
+    while(True):
+        
+        if is_valid_playlist_id(playlist_id):
+            print('Valid spotify playlist id entered. Checking if playlist is added for user: ' + user_name);
+            playlist_record = msGet_Playlist_In_Playlists_Table(playlist_id, user_name);
+            if(playlist_record is None):
+                print('Adding playlist to your list of playlists. Returning to main menu.');
+                msInsert_Playlist_Record_Into_Playlists(playlist_id, user_name);
+                msPost_login_menu_headline();
+                break;
+            else:
+                print('Playlist is already in your list of playlists. Returning to main menu.');
+                msPost_login_menu_headline();
+                break;
+            
+        else:
+            playlist_id = input("Please enter a valid spotify playlist id: ");
+
+def msInsert_Playlist_Record_Into_Playlists(playlist_id, user_name):
+    #inserts new playlist record into playlists table
+
+    user_id = msGet_User_Id_Using_User_Name(user_name);
+    conn = msGet_DB_Connection();
+    c = msGet_DB_Cursor(conn);
+    c.execute('INSERT INTO playlists(user_id, playlist_id) VALUES (?,?)',(user_id, playlist_id));
+    conn.commit();
+    msClose_DB_Connection(c, conn);
+
+def msGet_Playlist_In_Playlists_Table(playlist_id, user_name):
+    conn = msGet_DB_Connection();
+    c = msGet_DB_Cursor(conn);
+    user_id = msGet_User_Id_Using_User_Name(user_name);
+    playlistIdQueryCheckExecute = c.execute('SELECT * FROM playlists WHERE user_id = ? AND playlist_id = ?', (user_id,playlist_id));
+    playlist_record = playlistIdQueryCheckExecute.fetchone();
+    conn.commit();
+    msClose_DB_Connection(c, conn);
+    return playlist_record;
+
+def msGet_All_Playlists_Using_User_ID(user_name):
+    # returns an array using user_name
+
+    conn = msGet_DB_Connection();
+    c = msGet_DB_Cursor(conn);
+    user_id = msGet_User_Id_Using_User_Name(user_name);
+    playlistIdQueryCheckExecute = c.execute('SELECT * FROM playlists WHERE user_id = ?', (user_id,));
+    playlists = playlistIdQueryCheckExecute.fetchone();
+    conn.commit();
+    msClose_DB_Connection(c, conn);
+    return playlists;
+   
+def msGet_User_Playlist_Choice(user_name):
+
+
+    playlist_id ='';
+    return playlist_id;
 
 def msPost_login_menu_choice_2(userName):
-    
-    return 0;
+    # displays all tracks in specified playlist
 
-def msPost_login_menu_choice_3(userName):
+    playlist_id = msGet_User_Playlist_Choice(userName);
+    msPrint_playlist_track_names(playlist_id);
+
+def msPost_login_menu_choice_3(user_name):
+    # displays all playlists for specific user
+
+    user_id = msGet_User_Id_Using_User_Name(user_name);
+
+    playlists = msGet_Playlists_Using_User_ID(user_id);
+
+    if(playlists == []):
+        print('You need to have at least one playlist saved to display.');
+    else:
+        msPrint_all_playlist_names(playlists);
+
+def msGet_User_Id_Using_User_Name(user_name):
 
     conn = msGet_DB_Connection();
     c = msGet_DB_Cursor(conn);
-    userIdQueryExec = c.execute('SELECT user_id FROM users WHERE user_name = ?', (str(userName),));
-    userID = userIdQueryExec.fetchone()[0];
+    userIDGetQueryExecute = c.execute('SELECT user_id FROM users WHERE user_name = ?', (user_name,));
+    user_id = userIDGetQueryExecute.fetchone()[0];
+    conn.commit();
     msClose_DB_Connection(c, conn);
+    return user_id;        
+
+def msGet_Playlists_Using_User_ID(user_id):
     conn = msGet_DB_Connection();
     c = msGet_DB_Cursor(conn);
-    playlistsQueryExec = c.execute('SELECT playlist_id FROM playlists WHERE user_id = ?', (userID,));
+    playlistsQueryExec = c.execute('SELECT playlist_id FROM playlists WHERE user_id = ?', (user_id,));
     playlists = playlistsQueryExec.fetchall();
     msClose_DB_Connection(c, conn);
-    if(playlists == []):
-        print("You need to have at least one playlist saved to display.");
-    else:
-        for playlist in playlists:
-            print(playlist[0]);
+    return playlists
 
 def msPost_login_Menu(userName):
     msPost_login_menu_headline();
-    choice = int(input("Please choose a option: "));
+    choice = int(input('Please choose a option: '));
     while(True):
         if choice == 1:
-            msPost_login_menu_choice_1(userName)
-            break;
+            msPost_login_menu_choice_1(userName);
+            
         if choice == 2:
-            msPost_login_menu_choice_2(userName)
-            break;
+            msPost_login_menu_choice_2(userName);
+            
         if choice == 3:
             msPost_login_menu_choice_3(userName);
-            break;
+            
         if choice == 4:
             print('Thank you for using music suggest. Logging out');
             break;
         else:
-            choice = int(input("Please choose a valid option: "));
+            choice = int(input('Please choose another main menu option: '));
 
 def msPrint_playlist_track_names(playlist_id):
-    playlist= sp.playlist(playlistId);
+    playlist= sp.playlist(playlist_id);
     playlistTracks = playlist['tracks']['items'];
     for track in playlistTracks:
         try:
             print(track['track']['name']);
         except:
             pass
+def msPrint_all_playlist_names(playlists):
+    i = 1;
+    for playlist in playlists:
+            print(str(i) + ') ' +sp.playlist(playlist[0])['name']);
+            i = i + 1;
 def main():
     userName = msUser_Login();
     msPost_login_Menu(userName);
