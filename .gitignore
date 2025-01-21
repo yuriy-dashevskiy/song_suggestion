@@ -172,3 +172,6 @@ cython_debug/
 
 # Python Spotify Keys
 spotify_api_keys.py
+
+#VSCode Settings
+.vscode

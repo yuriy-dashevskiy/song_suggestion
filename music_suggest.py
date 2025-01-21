@@ -1,9 +1,21 @@
-import spotipy
 import hashlib
-import sqlite3
+import os
 import re
-from spotipy.oauth2 import SpotifyOAuth
 import spotify_api_keys as keys
+import spotipy
+import sqlite3
+from spotipy.oauth2 import SpotifyOAuth
+
+def clear_screen():
+    #clears the screen
+
+    # For Windows
+    if os.name == 'nt':
+        _ = os.system('cls') 
+
+    # For macOS and Linux
+    else:
+        _ = os.system('clear')
 
 def msGet_DB_Connection():
     
@@ -119,16 +131,19 @@ def msLogin_Existing_User():
     return userNameInput;
 
 def msPost_login_menu_headline():
-    
-    print('Welcome to music suggestions');
-    print('What option would you like to pick');
-    print('Option 1: Add playlist to your playlists');
-    print('Option 2: Display all tracks in a specific playlist');
-    print('Option 3: Display all of your playists');
-    print('Option 4: Exit');
+
+    menu = """
+Welcome to music suggestions
+What option would you like to pick?
+Option 1: Add playlist to your playlists
+Option 2: Display all tracks in a specific playlist
+Option 3: Display all of your playists
+Option 4: Exit""";
+    print(menu);
 
 def is_valid_playlist_id(playlist_id):
     # returns boolean if playlist id is a valid spotify playlist id
+
     try:
         sp.playlist(playlist_id);
         return True;
@@ -138,9 +153,11 @@ def is_valid_playlist_id(playlist_id):
 def msPost_login_menu_choice_1(user_name):
     # allows user to add a playlist to their list of playlists using spotify id or spotify url
 
-    print('Please choose an option for adding a playlist');
-    print('Option 1: Enter unique spotify id (found after /playlists/ in url and before # or ?si= if present)');
-    print('Option 2: Enter the spotify playlist url.');
+    menu = """
+Please choose an option for adding a playlist
+Option 1: Enter unique spotify id (found after /playlists/ in url and before # or ?si= if present
+Option 2: Enter the spotify playlist url.""";
+    print(menu);
     choice = int(input('Enter 1 or 2 for your choice: '));
     while(True):
         if choice == 1:
@@ -233,18 +250,53 @@ def msGet_All_Playlists_Using_User_ID(user_name):
     conn.commit();
     msClose_DB_Connection(c, conn);
     return playlists;
-   
-def msGet_User_Playlist_Choice(user_name):
 
+def msGet_User_Playlist_Choice(playlists):
+    playlist_id = '';
+    if len(playlists) == 1:
+        print('Since there is only one playlist saved, program will display that playlists tracks');
+        playlist_id = playlists[0][0];
+    else:
+        playlist_choice = int(input('Please choose the playlist you want to view: '));
+        while(True):
+            try:
+                #print(playlists[playlist_choice-1][0]);
+                playlist_id = playlists[playlist_choice-1][0];
+                break;
+            except:
+                
+                print('Invalid option selected. Please try again with the below options.');
+                msPrint_all_playlist_names(playlists);
+                playlist_choice = int(input('Please choose the playlist you want to view from above: '));
+    return playlist_id;
+
+def msHandle_User_Playlist_Option(user_name):
+
+    user_id = msGet_User_Id_Using_User_Name(user_name);
+    
+    playlists = msGet_Playlists_Using_User_ID(user_id);
 
     playlist_id ='';
+    if(playlists == []):
+        print('You need to have at least one playlist saved to pick one.');
+        playlist_id = 'None';
+    else:
+        print('Which playlist would like you like to view');
+        msPrint_all_playlist_names(playlists);
+        playlist_id = msGet_User_Playlist_Choice(playlists);
+        #msPrint_playlist_track_names(playlist_id);
+
     return playlist_id;
 
 def msPost_login_menu_choice_2(userName):
     # displays all tracks in specified playlist
 
-    playlist_id = msGet_User_Playlist_Choice(userName);
-    msPrint_playlist_track_names(playlist_id);
+    playlist_id = msHandle_User_Playlist_Option(userName);
+
+    if playlist_id == 'None':
+        print('Returning to main menu');
+    else:
+        msPrint_playlist_track_names(playlist_id);
 
 def msPost_login_menu_choice_3(user_name):
     # displays all playlists for specific user
@@ -254,7 +306,7 @@ def msPost_login_menu_choice_3(user_name):
     playlists = msGet_Playlists_Using_User_ID(user_id);
 
     if(playlists == []):
-        print('You need to have at least one playlist saved to display.');
+        print('You need to have at least one playlist saved to display all of your playlists.');
     else:
         msPrint_all_playlist_names(playlists);
 
@@ -281,21 +333,34 @@ def msPost_login_Menu(userName):
     choice = int(input('Please choose a option: '));
     while(True):
         if choice == 1:
+            
+            clear_screen();
             msPost_login_menu_choice_1(userName);
             
         if choice == 2:
+            
+            clear_screen();
             msPost_login_menu_choice_2(userName);
             
         if choice == 3:
+            
+            clear_screen();
             msPost_login_menu_choice_3(userName);
             
         if choice == 4:
+            
+            clear_screen();
             print('Thank you for using music suggest. Logging out');
             break;
+
         else:
+
+            msPost_login_menu_headline();
             choice = int(input('Please choose another main menu option: '));
 
 def msPrint_playlist_track_names(playlist_id):
+    #display every track name in a playlist using playlist id provided
+
     playlist= sp.playlist(playlist_id);
     playlistTracks = playlist['tracks']['items'];
     for track in playlistTracks:
@@ -306,11 +371,10 @@ def msPrint_playlist_track_names(playlist_id):
 def msPrint_all_playlist_names(playlists):
     i = 1;
     for playlist in playlists:
-            print(str(i) + ') ' +sp.playlist(playlist[0])['name']);
-            i = i + 1;
+        print(str(i) + ') ' +sp.playlist(playlist[0])['name']);
+        i = i + 1;
 def main():
     userName = msUser_Login();
     msPost_login_Menu(userName);
-    
+  
 main();
-
