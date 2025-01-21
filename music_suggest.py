@@ -6,6 +6,14 @@ import spotipy
 import sqlite3
 from spotipy.oauth2 import SpotifyOAuth
 
+sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=keys.clientID,
+
+                                               client_secret=keys.clientSecret,
+
+                                               redirect_uri=keys.reDirURL,
+
+                                               scope='user-library-read'));
+
 def clear_screen():
     #clears the screen
 
@@ -18,28 +26,25 @@ def clear_screen():
         _ = os.system('clear')
 
 def msGet_DB_Connection():
+    #creates new connection using specified db location
     
     conn = sqlite3.connect('C:/SQLite/files/music_suggestion.db');
     return conn;
 
 def msGet_DB_Cursor(conn):
+    #returns db cursor
     
     c = conn.cursor();
     return c;
 
 def msClose_DB_Connection(c, conn):
+    #closes db connection
 
     c.close();
     conn.close();
 
-sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=keys.clientID,
-
-                                               client_secret=keys.clientSecret,
-
-                                               redirect_uri=keys.reDirURL,
-
-                                               scope='user-library-read'));
 def msHandle_Initial_Menu():
+    #outputs the options for login screen and returns the choice picked
 
     print("Welcome to music suggestion. Please choose either new user to create or login existing user");
     print("Type 1 for New User or Type 2 for Existing User");
@@ -56,6 +61,7 @@ def msHandle_Initial_Menu():
     return myChoice;
     
 def msUser_Login():
+    #handles initial choise between creating new users or logging in as existing user
 
     choice = msHandle_Initial_Menu();
     userName = '';
@@ -107,6 +113,7 @@ def ms_Insert_New_User_Into_Users(user_name,password):
     msClose_DB_Connection(c, conn);
 
 def msLogin_Existing_User():
+    #handles login of existing users
     
     print("Existing User");
     print("Please Enter your user name and password");
@@ -131,14 +138,16 @@ def msLogin_Existing_User():
     return userNameInput;
 
 def msPost_login_menu_headline():
+    #outputs list of options available to the user to choose
 
     menu = """
 Welcome to music suggestions
 What option would you like to pick?
 Option 1: Add playlist to your playlists
-Option 2: Display all tracks in a specific playlist
-Option 3: Display all of your playists
-Option 4: Exit""";
+Option 2: Dalete playlist from your playlists
+Option 3: Display all tracks in a specific playlist
+Option 4: Display all of your playists
+Option 5: Exit""";
     print(menu);
 
 def is_valid_playlist_id(playlist_id):
@@ -150,53 +159,6 @@ def is_valid_playlist_id(playlist_id):
     except spotipy.exceptions.SpotifyException:
         return False;     
              
-def msPost_login_menu_choice_1(user_name):
-    # allows user to add a playlist to their list of playlists using spotify id or spotify url
-
-    menu = """
-Please choose an option for adding a playlist
-Option 1: Enter unique spotify id (found after /playlists/ in url and before # or ?si= if present
-Option 2: Enter the spotify playlist url.""";
-    print(menu);
-    choice = int(input('Enter 1 or 2 for your choice: '));
-    while(True):
-        if choice == 1:
-            msHandle_User_Playlist_ID_Entry(user_name);
-            break;
-        elif choice == 2:
-            msHandle_User_Playlist_URL_Entry(user_name)
-            break;
-        else:
-            choice = int(input('Please try again. Enter 1 or 2 for your choice.'));
-
-def msHandle_User_Playlist_URL_Entry(user_name):
-    #handles user input of spotify playlist url and decides if playlist needs to be added or is already added
-
-    playlist_id = '';
-    url = input('Please enter the spotify playlist url: ');
-    while(True):
-        if url.find('open.spotify.com/playlist/') != -1:
-            print('Valid spotify playlist url has been entered. Checking if playlist is added for user: ' + user_name);
-            url_parts = url.split('playlist/')[-1];
-            match = re.search(r'[^a-zA-Z0-9]', url_parts);
-            if match:
-                playlist_id = url_parts[:match.start()];
-            else:
-                playlist_id = (url_parts);
-            playlist_record = msGet_Playlist_In_Playlists_Table(playlist_id, user_name);
-            if(playlist_record is None):
-                print('Adding playlist to your list of playlists. Returning to main menu.');
-                msInsert_Playlist_Record_Into_Playlists(playlist_id, user_name);
-                msPost_login_menu_headline();
-                break;
-            else:
-                print('Playlist is already in your list of playlists. Returning to main menu.');
-                msPost_login_menu_headline();
-                break;
-            break;
-        else:
-            url = input('Please enter a valid spotify playlist url');
-
 def msHandle_User_Playlist_ID_Entry(user_name):
     #handles user input of spotify playlist id entry and decides if playlist needs to be added or is already added
 
@@ -229,7 +191,19 @@ def msInsert_Playlist_Record_Into_Playlists(playlist_id, user_name):
     conn.commit();
     msClose_DB_Connection(c, conn);
 
+def msDelete_Playlist_Record_Into_Playlists(playlist_id, user_name):
+    #deletes specified playlist record from playlists table
+
+    user_id = msGet_User_Id_Using_User_Name(user_name);
+    conn = msGet_DB_Connection();
+    c = msGet_DB_Cursor(conn);
+    c.execute('DELETE FROM playlists WHERE user_id = ? AND playlist_id = ?',(user_id, playlist_id));
+    conn.commit();
+    msClose_DB_Connection(c, conn);
+
 def msGet_Playlist_In_Playlists_Table(playlist_id, user_name):
+    #queries the table to return specific record using playlist_id and user_id(which is queried also using user_name parameter)
+
     conn = msGet_DB_Connection();
     c = msGet_DB_Cursor(conn);
     user_id = msGet_User_Id_Using_User_Name(user_name);
@@ -251,27 +225,55 @@ def msGet_All_Playlists_Using_User_ID(user_name):
     msClose_DB_Connection(c, conn);
     return playlists;
 
-def msGet_User_Playlist_Choice(playlists):
+def msGet_User_Playlist_Choice(playlists, action):
+    #returns the playlist id based on which playlist user chooses from their playlist and the action they are looking to do
+
     playlist_id = '';
     if len(playlists) == 1:
-        print('Since there is only one playlist saved, program will display that playlists tracks');
-        playlist_id = playlists[0][0];
+        print('Since there is only one playlist listed for you, program will ' + action + '.');
+        if action == 'remove':
+            print('Do you wish to delete the only playlist record saved?');
+            removal_input = input('Please write yes or no if you want to delete.');
+            while(True):
+                if removal_input == 'yes':
+                    print('Thank you for confirming. Program will delete playlist ' + sp.playlist([playlists[0][0]])['name'] + ' from your playlists records');
+                    playlist_id = playlists[0][0];
+                    break;
+                elif removal_input == 'no':
+                    playlist_id = 'None';
+                    break;
+                else:
+                    removal_input = input('Please try again. Type in yes or no if you want to delete: ');
     else:
-        playlist_choice = int(input('Please choose the playlist you want to view: '));
+        print('Which playlist would like you like to '+ action);
+        playlist_choice = int(input('Please choose the playlist you want to ' + action + ': '));
         while(True):
             try:
                 #print(playlists[playlist_choice-1][0]);
                 playlist_id = playlists[playlist_choice-1][0];
+                if action == 'remove':
+                    print('Do you wish to delete playlist ' + sp.playlist(playlist_id)['name'] + ' from your records?');
+                    removal_input = input('Please write yes or no if you want to delete: ');
+                    while(True):
+                        if removal_input == 'yes':
+                            print('Thank you for confirming. Program will delete playlist ' + sp.playlist(playlist_id)['name'] + ' from your playlists records');
+                            break;
+                        elif removal_input == 'no':
+                            playlist_id = 'None';
+                            break;
+                        else:
+                            removal_input = input('Please try again. Type in yes or no if you want to delete.');
                 break;
             except:
                 
                 print('Invalid option selected. Please try again with the below options.');
                 msPrint_all_playlist_names(playlists);
-                playlist_choice = int(input('Please choose the playlist you want to view from above: '));
+                playlist_choice = int(input('Please choose the playlist you want to ' + action + ' from above: '));
+
     return playlist_id;
 
-def msHandle_User_Playlist_Option(user_name):
-
+def msHandle_User_Playlist_Option(user_name, action):
+    #returns playlist_id based on provided user_name and the action they choose to perform
     user_id = msGet_User_Id_Using_User_Name(user_name);
     
     playlists = msGet_Playlists_Using_User_ID(user_id);
@@ -281,36 +283,103 @@ def msHandle_User_Playlist_Option(user_name):
         print('You need to have at least one playlist saved to pick one.');
         playlist_id = 'None';
     else:
-        print('Which playlist would like you like to view');
         msPrint_all_playlist_names(playlists);
-        playlist_id = msGet_User_Playlist_Choice(playlists);
+        playlist_id = msGet_User_Playlist_Choice(playlists, action);
         #msPrint_playlist_track_names(playlist_id);
 
     return playlist_id;
 
-def msPost_login_menu_choice_2(userName):
+
+def msHandle_User_Playlist_URL_Entry(user_name):
+    #handles user input of spotify playlist url and decides if playlist needs to be added or is already added
+
+    playlist_id = '';
+    url = input('Please enter the spotify playlist url: ');
+    while(True):
+        if url.find('open.spotify.com/playlist/') != -1:
+            print('Valid spotify playlist url has been entered. Checking if playlist is added for user: ' + user_name);
+            url_parts = url.split('playlist/')[-1];
+            match = re.search(r'[^a-zA-Z0-9]', url_parts);
+            if match:
+                playlist_id = url_parts[:match.start()];
+            else:
+                playlist_id = (url_parts);
+            playlist_record = msGet_Playlist_In_Playlists_Table(playlist_id, user_name);
+            if(playlist_record is None):
+                print('Adding playlist to your list of playlists. Returning to main menu.');
+                msInsert_Playlist_Record_Into_Playlists(playlist_id, user_name);
+                msPost_login_menu_headline();
+                break;
+            else:
+                print('Playlist is already in your list of playlists. Returning to main menu.');
+                msPost_login_menu_headline();
+                break;
+            break;
+        else:
+            url = input('Please enter a valid spotify playlist url: ');
+
+def msPost_login_menu_choice_1(user_name):
+    # allows user to add a playlist to their list of playlists using spotify id or spotify url
+
+    menu = """
+Please choose an option for adding a playlist
+Option 1: Enter unique spotify id (found after /playlists/ in url and before # or ?si= if present
+Option 2: Enter the spotify playlist url.""";
+    print(menu);
+    choice = int(input('Enter 1 or 2 for your choice: '));
+    while(True):
+        if choice == 1:
+            msHandle_User_Playlist_ID_Entry(user_name);
+            break;
+        elif choice == 2:
+            msHandle_User_Playlist_URL_Entry(user_name)
+            break;
+        else:
+            choice = int(input('Please try again. Enter 1 or 2 for your choice: '));
+
+def msPost_login_menu_choice_2(user_name):
+    # allows user to remove a playlist from their list of playlists
+
+    user_id = msGet_User_Id_Using_User_Name(user_name);
+    
+    playlists = msGet_Playlists_Using_User_ID(user_id);
+
+    playlist_id ='';
+    if playlists == []:
+        print('You need to have at least one playlist saved to delete.');
+    else:
+        msPrint_all_playlist_names(playlists);
+        playlist_id = msGet_User_Playlist_Choice(playlists, 'remove');
+        if playlist_id == 'None':
+            print('No playlist will be deleted. Returning to main menu');
+        else:
+            msDelete_Playlist_Record_Into_Playlists(playlist_id, user_name);
+            print('Record has been deleted.');
+
+def msPost_login_menu_choice_3(userName):
     # displays all tracks in specified playlist
 
-    playlist_id = msHandle_User_Playlist_Option(userName);
+    playlist_id = msHandle_User_Playlist_Option(userName, 'view');
 
     if playlist_id == 'None':
         print('Returning to main menu');
     else:
         msPrint_playlist_track_names(playlist_id);
 
-def msPost_login_menu_choice_3(user_name):
+def msPost_login_menu_choice_4(user_name):
     # displays all playlists for specific user
 
     user_id = msGet_User_Id_Using_User_Name(user_name);
 
     playlists = msGet_Playlists_Using_User_ID(user_id);
 
-    if(playlists == []):
+    if playlists == []:
         print('You need to have at least one playlist saved to display all of your playlists.');
     else:
         msPrint_all_playlist_names(playlists);
 
 def msGet_User_Id_Using_User_Name(user_name):
+    #queries the users table to get user_id using user_name value
 
     conn = msGet_DB_Connection();
     c = msGet_DB_Cursor(conn);
@@ -321,6 +390,8 @@ def msGet_User_Id_Using_User_Name(user_name):
     return user_id;        
 
 def msGet_Playlists_Using_User_ID(user_id):
+    #queries the playlist table to get list of playlists using user_id value
+
     conn = msGet_DB_Connection();
     c = msGet_DB_Cursor(conn);
     playlistsQueryExec = c.execute('SELECT playlist_id FROM playlists WHERE user_id = ?', (user_id,));
@@ -329,25 +400,20 @@ def msGet_Playlists_Using_User_ID(user_id):
     return playlists
 
 def msPost_login_Menu(userName):
+    #handles menu after logging in
+
     msPost_login_menu_headline();
     choice = int(input('Please choose a option: '));
     while(True):
-        if choice == 1:
+        if choice == 1: clear_screen(); msPost_login_menu_choice_1(userName);
             
-            clear_screen();
-            msPost_login_menu_choice_1(userName);
+        if choice == 2: clear_screen(); msPost_login_menu_choice_2(userName);
             
-        if choice == 2:
+        if choice == 3: clear_screen(); msPost_login_menu_choice_3(userName);
+
+        if choice == 4: clear_screen(); msPost_login_menu_choice_4(userName);
             
-            clear_screen();
-            msPost_login_menu_choice_2(userName);
-            
-        if choice == 3:
-            
-            clear_screen();
-            msPost_login_menu_choice_3(userName);
-            
-        if choice == 4:
+        if choice == 5:
             
             clear_screen();
             print('Thank you for using music suggest. Logging out');
@@ -362,19 +428,26 @@ def msPrint_playlist_track_names(playlist_id):
     #display every track name in a playlist using playlist id provided
 
     playlist= sp.playlist(playlist_id);
+    print('Playlist: ' + playlist['name']);
     playlistTracks = playlist['tracks']['items'];
+    i = 1;
     for track in playlistTracks:
         try:
-            print(track['track']['name']);
+            print(str(i) + ') ' + track['track']['name']);
+            i = i + 1;
         except:
             pass
 def msPrint_all_playlist_names(playlists):
+    #prints every playlist name in playlists provided
     i = 1;
     for playlist in playlists:
         print(str(i) + ') ' +sp.playlist(playlist[0])['name']);
         i = i + 1;
+
 def main():
+    #handles main execution of the program
+
     userName = msUser_Login();
     msPost_login_Menu(userName);
-  
+
 main();
