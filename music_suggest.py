@@ -68,6 +68,7 @@ def msHandle_Initial_Menu():
                 print('Please re-enter a number that is 1 or 2!');
         except ValueError:
             print('Please re-enter a valid number!');
+        #except:
     return myChoice;
     
 def msUser_Login():
@@ -80,7 +81,18 @@ def msUser_Login():
     else:
         userName = msLogin_Existing_User();
     return userName;
-    
+
+def msGet_User_Id_Using_User_Name(user_name):
+    #queries the users table to get user_id using user_name value
+
+    conn = msGet_DB_Connection();
+    c = msGet_DB_Cursor(conn);
+    userIDGetQueryExecute = c.execute('SELECT user_id FROM users WHERE user_name = ?', (user_name,));
+    user_id = userIDGetQueryExecute.fetchone()[0];
+    conn.commit();
+    msClose_DB_Connection(c, conn);
+    return user_id;    
+
 def msCreate_New_User():
     # handles creation of new user to add to the users table
     
@@ -97,7 +109,6 @@ def msCreate_New_User():
         user_pass_input = input('Please enter your password: ');
         user_pass_hash = hashlib.sha224(user_pass_input.encode('utf-8')).hexdigest();
         ms_Insert_New_User_Into_Users(user_name,user_pass_hash);
-        
         break;
     return user_name;
 
@@ -106,10 +117,20 @@ def ms_Get_Record_Of_User_In_Users_Table(user_name):
 
     conn = msGet_DB_Connection();
     c = msGet_DB_Cursor(conn);
-    queryExecute = c.execute('SELECT * FROM users WHERE user_name = ?;', (user_name,));
+    queryExecute = c.execute('SELECT * FROM users WHERE user_name = ?;',(user_name,));
     user_record = queryExecute.fetchone();
     msClose_DB_Connection(c, conn);
     return user_record;
+
+def msGet_Playlists_Using_User_ID(user_id):
+    #queries the playlist table to get list of playlists using user_id value
+
+    conn = msGet_DB_Connection();
+    c = msGet_DB_Cursor(conn);
+    playlistsQueryExec = c.execute('SELECT playlist_id FROM playlists WHERE user_id = ?', (user_id,));
+    playlists = playlistsQueryExec.fetchall();
+    msClose_DB_Connection(c, conn);
+    return playlists
 
 def ms_Insert_New_User_Into_Users(user_name,password):
     #inserts new user into users table
@@ -147,18 +168,27 @@ def msLogin_Existing_User():
             break;
     return userNameInput;
 
-def msPost_login_menu_headline():
+def msPost_login_menu_headline(user_name, new = True, invalid = False):
     #outputs list of options available to the user to choose
-
-    menu = """
-Welcome to music suggestions
-What option would you like to pick?
+    options = """
 Option 1: Add playlist to your playlists
 Option 2: Delete playlist from your playlists
 Option 3: Display all tracks in a specific playlist
 Option 4: Display all of your playists
 Option 5: Suggest songs for your playlist
 Option 6: Exit""";
+
+    if new:
+        menu = f"""
+Welcome {user_name} to music suggestions
+What option would you like to pick? """ + options;
+    else:
+        if invalid:
+            menu = f"""
+{user_name}, Please pick a valid option from the list below!""" + options;
+        else:    
+            menu = f"""
+{user_name}, what new option would you like to pick?""" + options;
     print(menu);
 
 def is_valid_playlist_id(playlist_id):
@@ -168,7 +198,10 @@ def is_valid_playlist_id(playlist_id):
         sp.playlist(playlist_id) ;
         return True;
     except spotipy.exceptions.SpotifyException as e:
-        return False;        
+        return False;
+    except HTTPError:
+        return False;    
+    
 def msHandle_User_Playlist_ID_Entry(user_name):
     #handles user input of spotify playlist id entry and decides if playlist needs to be added or is already added
 
@@ -176,18 +209,15 @@ def msHandle_User_Playlist_ID_Entry(user_name):
     while(True):
         
         if is_valid_playlist_id(playlist_id):
-            print('Spotify playlist id has been entered. Checking if playlist is added for user: ' + user_name);
+            print(f'Spotify playlist id has been entered. Checking if playlist is added for user: {user_name}');
             playlist_record = msGet_Playlist_In_Playlists_Table(playlist_id, user_name);
             if(playlist_record is None):
                 print('Adding playlist to your list of playlists. Returning to main menu.');
                 msInsert_Playlist_Record_Into_Playlists(playlist_id, user_name);
-                msPost_login_menu_headline();
                 break;
             else:
                 print('Playlist is already in your list of playlists. Returning to main menu.');
-                msPost_login_menu_headline();
                 break;
-            
         else:
             playlist_id = input("Please enter a valid spotify playlist id: ");
 
@@ -229,7 +259,7 @@ def msGet_All_Playlists_Using_User_ID(user_name):
     conn = msGet_DB_Connection();
     c = msGet_DB_Cursor(conn);
     user_id = msGet_User_Id_Using_User_Name(user_name);
-    playlistIdQueryCheckExecute = c.execute('SELECT * FROM playlists WHERE user_id = ?', (user_id,));
+    playlistIdQueryCheckExecute = c.execute(f'SELECT * FROM playlists WHERE user_id = ? {(user_id,)}');
     playlists = playlistIdQueryCheckExecute.fetchone();
     conn.commit();
     msClose_DB_Connection(c, conn);
@@ -240,13 +270,13 @@ def msGet_User_Playlist_Choice(playlists, action):
 
     playlist_id = '';
     if len(playlists) == 1:
-        print('Since there is only one playlist listed for you, program will ' + action + ' for this playlist.');
+        print(f'Since there is only one playlist listed for you, program will {action} for this playlist.');
         if action == 'remove':
             print('Do you wish to delete the only playlist record saved?');
             removal_input = input('Please write yes or no if you want to delete.');
             while(True):
                 if removal_input == 'yes':
-                    print('Thank you for confirming. Program will delete playlist ' + sp.playlist([playlists[0][0]])['name'] + ' from your playlists records');
+                    print(f'Thank you for confirming. Program will delete playlist {sp.playlist([playlists[0][0]])["name"]} from your playlists records');
                     playlist_id = playlists[0][0];
                     break;
                 elif removal_input == 'no':
@@ -257,17 +287,17 @@ def msGet_User_Playlist_Choice(playlists, action):
     else:
         print('Which playlist would like you like to '+ action);
         msPrint_all_playlist_names(playlists);
-        playlist_choice = int(input('Please choose the playlist you want to ' + action + ': '));
+        
         while(True):
             try:
-                #print(playlists[playlist_choice-1][0]);
+                playlist_choice = int(input(f'Please choose the playlist you want to {action}: '));
                 playlist_id = playlists[playlist_choice-1][0];
                 if action == 'remove':
-                    print('Do you wish to delete playlist ' + sp.playlist(playlist_id)['name'] + ' from your records?');
+                    print(f'Do you wish to delete playlist {sp.playlist(playlist_id)["name"]} from your records?');
                     removal_input = input('Please write yes or no if you want to delete: ');
                     while(True):
                         if removal_input == 'yes':
-                            print('Thank you for confirming. Program will delete playlist ' + sp.playlist(playlist_id)['name'] + ' from your playlists records');
+                            print(f'Thank you for confirming. Program will delete playlist {sp.playlist(playlist_id)["name"]} from your playlists records');
                             break;
                         elif removal_input == 'no':
                             playlist_id = 'None';
@@ -275,11 +305,12 @@ def msGet_User_Playlist_Choice(playlists, action):
                         else:
                             removal_input = input('Please try again. Type in yes or no if you want to delete.');
                 break;
-            except:
-                
+            except ValueError:
                 print('Invalid option selected. Please try again with the below options.');
                 msPrint_all_playlist_names(playlists);
-                playlist_choice = int(input('Please choose the playlist you want to ' + action + ' from above: '));
+            except:
+                print('Invalid option selected. Please try again with the below options.');
+                msPrint_all_playlist_names(playlists);
 
     return playlist_id;
 
@@ -307,7 +338,7 @@ def msHandle_User_Playlist_URL_Entry(user_name):
     url = input('Please enter the spotify playlist url: ');
     while(True):
         if url.find('open.spotify.com/playlist/') != -1:
-            print('Spotify playlist url has been entered. Checking if playlist is added for user: ' + user_name);
+            print(f'Spotify playlist url has been entered. Checking if playlist is added for user: {user_name}');
             url_parts = url.split('playlist/')[-1];
             match = re.search(r'[^a-zA-Z0-9]', url_parts);
             if match:
@@ -337,16 +368,21 @@ Please choose an option for adding a playlist
 Option 1: Enter unique spotify id (found after /playlists/ in url and before # or ?si= if present
 Option 2: Enter the spotify playlist url.""";
     print(menu);
-    choice = int(input('Enter 1 or 2 for your choice: '));
+    
     while(True):
-        if choice == 1:
-            msHandle_User_Playlist_ID_Entry(user_name);
-            break;
-        elif choice == 2:
-            msHandle_User_Playlist_URL_Entry(user_name)
-            break;
-        else:
-            choice = int(input('Please try again. Enter 1 or 2 for your choice: '));
+        try:
+            choice = int(input('Please enter 1 or 2 for your choice: '));
+            if choice == 1:
+                msHandle_User_Playlist_ID_Entry(user_name);
+                break;
+            elif choice == 2:
+                msHandle_User_Playlist_URL_Entry(user_name)
+                break;
+            else:
+                print('Invalid entry. Please try again.'); 
+        except ValueError:
+            print('Invalid entry. Please try again.');    
+    
 
 def msPost_login_menu_choice_2(user_name):
     # allows user to remove a playlist from their list of playlists
@@ -401,16 +437,18 @@ def msPost_login_menu_choice_5(user_name):
     else:
         playlist_id = msGet_User_Playlist_Choice(playlists, 'get music suggestions');
         print('Would you like to top track suggestions or all song suggestions');
-        track_suggestion_input = int(input('Please enter 1 for Top Tracks or 2 for All Tracks: '));
         while(True):
-            if track_suggestion_input == 1:
-                msHandle_Music_Suggestion(playlist_id, 'top');
-                break;
-            elif track_suggestion_input == 2:
-                msHandle_Music_Suggestion(playlist_id, 'all');
-                break;
-            else:
-                track_suggestion_input = int('Invalid entry. Please enter 1 for Top Tracks or 2 for All Tracks: ');
+            try: 
+                track_suggestion_input = int(input('Enter 1 for Top Tracks or 2 for All Tracks: '));
+                if track_suggestion_input == 1:
+                    msHandle_Music_Suggestion(playlist_id, 'top');
+                    break;
+                elif track_suggestion_input == 2:
+                    msHandle_Music_Suggestion(playlist_id, 'all');
+                    break;
+                print('Invalid entry. Please try again');
+            except ValueError:
+                print('Invalid entry. Please try again');
 
 def msHandle_Music_Suggestion(playlist_id, action):
     #handles user choosing computer to decide the artist or they can pick the artist for music suggestion
@@ -422,31 +460,31 @@ Option 2: Pick a specific artist from your playlist to get song suggestions.
 """;
 
     playlist_artist_dict = msGet_Playlist_Artist_Sorted_Dictionary(playlist_id);
-    i = 1;
-    for id in playlist_artist_dict:
-        print(str(i) + ')' + playlist_artist_dict[id]);
-        i = i + 1;
-    print(options);
-    music_suggestion_input = int(input('Pick one of the options above: '));
-
+    
     while(True):
-
-        if music_suggestion_input == 1:
-            if action == 'top':
-                msHandle_Artist_Song_Suggestion(playlist_artist_dict, playlist_id, 'random', 'their top');
-            else:
-                msHandle_Artist_Song_Suggestion(playlist_artist_dict, playlist_id, 'random', 'all their');
-            break;
-            
-        elif music_suggestion_input == 2:
-            if action == 'top':
-                msHandle_Artist_Song_Suggestion(playlist_artist_dict, playlist_id, 'specific', 'their top');
-            else:
-                msHandle_Artist_Song_Suggestion(playlist_artist_dict, playlist_id, 'specific', 'all their');
-            break;
-
-        else:
-            music_suggestion_input = int(input('Please try again. Enter 1 or 2 for the options listed above: '));
+        try:
+            i = 1;
+            for id in playlist_artist_dict:
+                print(str(i) + ')' + playlist_artist_dict[id]);
+                i = i + 1;
+            print(options);
+            music_suggestion_input = int(input('Pick one of the options above: '));
+            if music_suggestion_input == 1:
+                if action == 'top':
+                    msHandle_Artist_Song_Suggestion(playlist_artist_dict, playlist_id, 'random', 'their top');
+                else:
+                    msHandle_Artist_Song_Suggestion(playlist_artist_dict, playlist_id, 'random', 'all their');
+                break;
+                
+            elif music_suggestion_input == 2:
+                if action == 'top':
+                    msHandle_Artist_Song_Suggestion(playlist_artist_dict, playlist_id, 'specific', 'their top');
+                else:
+                    msHandle_Artist_Song_Suggestion(playlist_artist_dict, playlist_id, 'specific', 'all their');
+                break;
+            print('Invalid entry. Please try again');
+        except ValueError:
+            print('Invalid entry. Please try again');
 
 def msPrint_Artist_Sorted_Dictionary(playlist_artist_dictionary):
     #prints the values in the playlist_artist_dictionary
@@ -466,13 +504,6 @@ def msGet_All_Tracks_Of_Artist(artist_id):
     for album in albums['items']:
         # Get tracks for each album
         tracks = sp.album_tracks(album['id'])
-        #for track in tracks['items']:
-         #   songs.append({
-        #        'name': track['name'],
-        #        #'album': album['name'],
-                #'artist': track['artists'][0]['name'],
-                #'id':track['id']
-        #    })
         songs.append(tracks);
 
     return songs;
@@ -487,39 +518,40 @@ def msHandle_Artist_Song_Suggestion(playlist_artist_dict, playlist_id, action, t
         msPrint_Artist_Sorted_Dictionary(pad);
         print('Pick an artist using the number next to them to start song suggestion');
 
-        i = 1;
+        num_artists = 1;
         for artist in pad:
-            print(str(i) + ') ' + pad[artist]);
             artist_list.append([artist]);
-            i = i + 1;
-        artist_choice = int(input('Enter a number option next to the artist name: '));
-
+            num_artists += 1;
+        
         while(True):
-            if 1 <= artist_choice <= i :
-                artist_id = artist_list[artist_choice-1][0];
-                print('Artist ' + pad[artist_id] + ' has been picked');
-                print('Suggested songs to add/listen to from ' + total + ' tracks');
-                songs_list = msGet_Songs_From_Playlist_From_Specific_Artist(artist_id,playlist_id)
-                if total == 'their top':
-                    tracks = sp.artist_top_tracks(artist_id)['tracks'];
-                    msPrint_List_of_Top_Tracks_Not_In_Playlist(tracks, songs_list);
-                else:
-                    tracks = msGet_All_Artist_Songs(artist_id);
-                    msPrint_List_of_Ten_Random_All_Tracks_Not_In_Playlist(tracks, songs_list);
-                break;
-            else:
-                artist_choice = int(input('Please enter a valid number next to the artists listed above: '));
+            try:
+                artist_choice = int(input('Enter a number option next to the artist name: '));
+                if 1 <= artist_choice <= num_artists :
+                    artist_id = artist_list[artist_choice-1][0];
+                    print(f'Artist {pad[artist_id]} has been picked specifically');
+                    print(f'Suggested songs to add/listen to from {total} tracks');
+                    songs_list = msGet_Songs_From_Playlist_From_Specific_Artist(artist_id,playlist_id)
+                    if total == 'their top':
+                        tracks = sp.artist_top_tracks(artist_id)['tracks'];
+                        msPrint_List_of_Top_Tracks_Not_In_Playlist(tracks, songs_list);
+                    else:
+                        tracks = msGet_All_Artist_Songs(artist_id);
+                        msPrint_List_of_Ten_Random_All_Tracks_Not_In_Playlist(tracks, songs_list);
+                    break;
+                print('Please enter a valid number next to the artists listed above: ');
+            except ValueError:
+                print('Please enter a valid number next to the artists listed above: ');
     else:
         print('Picking an artist at random from your playlist');
-        i = 1;
+        num_artists = 1;
         for artist in pad:
-            print(str(i) + ') ' + pad[artist]);
+            print(str(num_artists) + ') ' + pad[artist]);
             artist_list.append([artist]);
-            i = i + 1;
-        artist_choice = random.randint(1,i);
+            num_artists += 1;
+        artist_choice = random.randint(1,num_artists);
         artist_id = artist_list[artist_choice-1][0];        
-        print('Artist ' + pad[artist_id] + ' has been picked at random');
-        print('Suggested songs to add/listen to from ' + total +' tracks');
+        print(f'Artist {pad[artist_id]} has been picked at random');
+        print(f'Suggested songs to add/listen to from {total} tracks');
         songs_list = msGet_Songs_From_Playlist_From_Specific_Artist(artist_id,playlist_id)
         if total == 'their top':
             tracks = sp.artist_top_tracks(artist_id)['tracks'];
@@ -554,21 +586,21 @@ def msPrint_List_of_Ten_Random_All_Tracks_Not_In_Playlist(tracks, songs_list):
         for track in songs_not_in_list:
             print(track);
     else:
-        i = 1;
+        num_tracks = 1;
         index_list = [];
-        while i < 11:
+        while num_tracks < 11:
             random_index =  random.randint(0, len(songs_not_in_list)-1);
             if random_index not in index_list:
                 print(songs_not_in_list[random_index]);
                 index_list.append(random_index);
-                i = i + 1; 
+                num_tracks += 1; 
 
 def msGet_Playlist_Artist_Sorted_Dictionary(playlist_id):
     #returns a sorted dictionary of artists in a playlist using playlist_id
 
     artist_id_list = {};
     playlist =  sp.playlist(playlist_id);
-    print('Artists in Playlist: ' + playlist['name']);
+    print(f'Artists in Playlist: {playlist["name"]}');
     playlistTracks = playlist['tracks']['items'];
 
     for track in playlistTracks:
@@ -583,53 +615,37 @@ def msGet_Playlist_Artist_Sorted_Dictionary(playlist_id):
 
     return artist_id_list;
 
-def msGet_User_Id_Using_User_Name(user_name):
-    #queries the users table to get user_id using user_name value
-
-    conn = msGet_DB_Connection();
-    c = msGet_DB_Cursor(conn);
-    userIDGetQueryExecute = c.execute('SELECT user_id FROM users WHERE user_name = ?', (user_name,));
-    user_id = userIDGetQueryExecute.fetchone()[0];
-    conn.commit();
-    msClose_DB_Connection(c, conn);
-    return user_id;        
-
-def msGet_Playlists_Using_User_ID(user_id):
-    #queries the playlist table to get list of playlists using user_id value
-
-    conn = msGet_DB_Connection();
-    c = msGet_DB_Cursor(conn);
-    playlistsQueryExec = c.execute('SELECT playlist_id FROM playlists WHERE user_id = ?', (user_id,));
-    playlists = playlistsQueryExec.fetchall();
-    msClose_DB_Connection(c, conn);
-    return playlists
-
 def msPost_login_Menu(user_name):
     #handles menu after logging in
-
-    msPost_login_menu_headline();
-    choice = int(input('Please choose a option: '));
+    msPost_login_menu_headline(user_name);
     while(True):
-        if choice == 1: clear_screen(); msPost_login_menu_choice_1(user_name);
-            
-        if choice == 2: clear_screen(); msPost_login_menu_choice_2(user_name);
-            
-        if choice == 3: clear_screen(); msPost_login_menu_choice_3(user_name);
+        try:
+           
+            choice = int(input('Please choose a option above: '));
+            if choice == 1: clear_screen(); msPost_login_menu_choice_1(user_name); msPost_login_menu_headline(user_name, False);
+                
+            elif choice == 2: clear_screen(); msPost_login_menu_choice_2(user_name); msPost_login_menu_headline(user_name, False);
+                
+            elif choice == 3: clear_screen(); msPost_login_menu_choice_3(user_name); msPost_login_menu_headline(user_name, False);
 
-        if choice == 4: clear_screen(); msPost_login_menu_choice_4(user_name);
+            elif choice == 4: clear_screen(); msPost_login_menu_choice_4(user_name); msPost_login_menu_headline(user_name, False);
 
-        if choice == 5: clear_screen(); msPost_login_menu_choice_5(user_name);
+            elif choice == 5: clear_screen(); msPost_login_menu_choice_5(user_name); msPost_login_menu_headline(user_name, False);
+                
+            elif choice == 6:
+                
+                clear_screen();
+                print('Thank you for using music suggest. Logging out');
+                break;
             
-        if choice == 6:
-            
+            else:
+                clear_screen();
+                msPost_login_menu_headline(user_name, False, True);
+
+        except ValueError:
             clear_screen();
-            print('Thank you for using music suggest. Logging out');
-            break;
-
-        else:
-
-            msPost_login_menu_headline();
-            choice = int(input('Please choose another main menu option: '));
+            msPost_login_menu_headline(user_name, False, True);
+            
 
 def msGet_Songs_From_Playlist_From_Specific_Artist(artist_id,playlist_id):
     #returns list of specific artist songs in specific playlist
@@ -638,15 +654,11 @@ def msGet_Songs_From_Playlist_From_Specific_Artist(artist_id,playlist_id):
     playlist= sp.playlist(playlist_id);
     playlistTracks = playlist['tracks']['items'];
 
-    i = 1;
     for track in playlistTracks:
         try:
             specific_track = track['track']['artists'][0];
-            #print(specific_track);
             if specific_track['id'] == artist_id:
                 songs_list.append(track['track']['name']);
-
-            i = i + 1;
         except:
             pass
     
@@ -673,22 +685,22 @@ def msPrint_playlist_track_names(playlist_id):
     playlist= sp.playlist(playlist_id);
     print('Playlist: ' + playlist['name']);
     playlistTracks = playlist['tracks']['items'];
-    i = 1;
+    num_tracks = 1;
     for track in playlistTracks:
         try:
-            print(str(i) + ') ' + track['track']['name']);
-            i = i + 1;
+            print(str(num_tracks) + ') ' + track['track']['name']);
+            num_tracks += 1;
         except:
             pass
 
 def msPrint_all_playlist_names(playlists):
     #prints every playlist name in playlists provided
 
-    i = 1;
+    num_playlists = 1;
     for playlist in playlists:
         try:
-            print(str(i) + ') ' +sp.playlist(playlist[0])['name']);
-            i = i + 1;
+            print(str(num_playlists) + ') ' +sp.playlist(playlist[0])['name']);
+            num_playlists += 1;
         except:
             print('404 for record');
 
