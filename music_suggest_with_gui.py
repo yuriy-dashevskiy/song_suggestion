@@ -7,13 +7,33 @@ import sqlite3
 import spotify_api_keys as keys
 import spotipy
 import logging
+import re
 from PIL import Image, ImageTk
 import textwrap
+import random
 logging.basicConfig(level=logging.ERROR);
 
 from spotipy.oauth2 import SpotifyOAuth
 from requests.exceptions import HTTPError
-
+musical_note_ascii = '''
+⠀⠀⠀⠀⠀⢀⣼⣿⣆⠀⠀⠀
+⠀⠀⠀⠀⠀⣾⡿⠛⢻⡆⠀⠀
+⠀⠀⠀⠀⢰⣿⠀⠀⢸⡇⠀⠀
+⠀⠀⠀⠀⠸⡇⠀⢀⣾⠇⠀⠀
+⠀⠀⠀⠀⠀⣿⣤⣿⡟⠀⠀⠀
+⠀⠀⠀⠀⣠⣾⣿⣿⠀⠀⠀⠀
+⠀⠀⣠⣾⣿⡿⣏⠀⠀⠀⠀⠀
+⠀⣴⣿⡿⠋⠀⢻⡉⠀⠀⠀⠀
+⢰⣿⡟⠀⢀⣴⣿⣿⣿⣿⣦⠀
+⢸⡿⠀⠀⣿⠟⠛⣿⠟⠛⣿⣧
+⠘⣿⡀⠀⢿⡀⠀⢻⣤⠖⢻⡿
+⠀⠘⢷⣄⠈⠙⠦⠸⡇⢀⡾⠃
+⠀⠀⠀⠙⠛⠶⠤⠶⣿⠉⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⢹⡇⠀⠀
+⠀⠀⢀⣴⣾⣿⣆⠀⠈⣧⠀⠀
+⠀⠀⠈⣿⣿⡿⠃⠀⣰⡏⠀⠀
+⠀⠀⠀⠈⣙⠓⠒⠚⠉⠀⠀⠀
+'''
 class VerticalScrolledFrame(ttk.Frame):
     def __init__(self, parent, *args, **kw):
         ttk.Frame.__init__(self, parent, *args, **kw)
@@ -21,7 +41,7 @@ class VerticalScrolledFrame(ttk.Frame):
         # Create a canvas object and a vertical scrollbar for scrolling it.
         vscrollbar = ttk.Scrollbar(self, orient=VERTICAL)
         vscrollbar.pack(fill=Y, side=RIGHT, expand=FALSE)
-        self.canvas = tk.Canvas(self, bd=0, highlightthickness=0, 
+        self.canvas = tk.Canvas(self, bd=0, highlightthickness=1,
                                 width = 200, height = 300,
                                 yscrollcommand=vscrollbar.set)
         self.canvas.pack(side=LEFT, fill=BOTH, expand=TRUE)
@@ -106,12 +126,12 @@ def msGet_all_playlist_names(playlists):
             playlist_id = str(playlist).replace('(', '').replace(')', '').replace(',', '').replace('\'', '');
             playlist_names[playlist_id] = sp.playlist(playlist[0])['name']
         except:
-            print('404 for record');
+            pass
     return playlist_names;
 
 root = tk.Tk()
-root.title("MS")
-root.geometry("200x150")
+root.title("Music Suggestion")
+root.geometry("350x450")
 root.resizable(0,0)
 
 def check_login(userNameInput, userPassInput):
@@ -128,24 +148,54 @@ def check_login(userNameInput, userPassInput):
         return False;
     else:
         return True;
-     
-def on_login_button_pressed(entry1, entry2):
-    loginResult = check_login(entry1.get(), entry2.get());
-    label = get_login_result_label();
-    user_name = entry1.get();
-    if(loginResult == False):
-        label.place(x = 75, y = 100)
-        label.config(text="Unsuccessful")
-    else:
-        remove_widgets_from_root()
 
-        root.after(1000,handle_music_suggestion_menu, user_name);
-        label = tk.Label(root, text="Success")
-        label.place(x=75, y=5)
-        label2 = tk.Label(root, text="Login Result:")
-        label2.place(x=5, y=5)
-        label.after(1500, label.destroy)
-        label2.after(1500, label2.destroy)
+def check_user_name_taken(user_name):
+    conn = msGet_DB_Connection();
+    c = msGet_DB_Cursor(conn);
+    queryExecute = c.execute('SELECT * FROM users WHERE user_name = ?', (user_name, ));
+    result = queryExecute.fetchone()
+    conn.commit();
+    msClose_DB_Connection(c, conn);
+    if(result is None):
+        return False;
+    else:
+        return True;
+
+def on_login_button_pressed(user_name, password):
+    #check if login is valid and redirects to music suggestion main menu if valid
+    
+    if user_name == '' or password == '':
+        handle_login_existing('Invalid Login')
+    elif(not check_login(user_name, password)):
+        handle_login_existing('Invalid Login')
+    else:
+        handle_music_suggestion_menu(user_name)
+
+def insert_New_User_Into_Users(user_name,password):
+    #inserts new user into users table
+
+    conn = msGet_DB_Connection();
+    c = msGet_DB_Cursor(conn);
+    queryExecute = c.execute('SELECT MAX(user_id) FROM users');
+    maxID = int(queryExecute.fetchone()[0]);
+    c.execute('INSERT INTO users(user_id, user_name, password) VALUES (?,?,?)',(maxID + 1, user_name, password));
+    conn.commit();
+    msClose_DB_Connection(c, conn);
+
+def on_create_button_pressed(user_name, password, password_confirm):
+    #checks if entered user name, password and password confirm are valid
+
+    if user_name == '' or password == '' or password_confirm == '':
+        handle_create_new_user("Please enter info in every text box")                      
+    elif check_user_name_taken(user_name):
+        handle_create_new_user("User Name Taken")
+    else:
+        if password == password_confirm:
+            user_pass_hash = hashlib.sha224(password.encode('utf-8')).hexdigest();
+            insert_New_User_Into_Users(user_name,user_pass_hash);
+            handle_music_suggestion_menu(user_name)
+        else:
+            handle_create_new_user("Passwords do not match")
 
 def get_menu_details(user_name):
     #returns menu details
@@ -159,7 +209,7 @@ Please click one of the options listed below to proceed.
 
 def handle_music_suggestion_menu(user_name):
     root.title("Music Suggestion")
-    root.geometry("350x450")
+    #root.geometry("350x450")
     root.resizable(0,0)
 
     remove_widgets_from_root()
@@ -177,45 +227,27 @@ def handle_music_suggestion_menu(user_name):
     left.place(x=300,y=0)
     left.pack()
 
-    global option_1_button, option_2_button, option_3_button, option_4_button, option_5_button, option_6_button
-
-    option_1_button =  tk.Button(left, text="Add Playlist", command=lambda :handle_music_suggestion_menu_option_1(user_name), width = 25)
+    option_1_button = tk.Button(left, text="Add Playlist", command=lambda :handle_music_suggestion_menu_option_1(user_name), width = 25)
     option_1_button.pack()
 
-    option_2_button =  tk.Button(left, text="Remove Playlist", command=lambda :handle_music_suggestion_menu_option_2(user_name), width = 25)
+    option_2_button = tk.Button(left, text="Remove Playlist", command=lambda :handle_music_suggestion_menu_option_2(user_name), width = 25)
     option_2_button.pack()
 
-    option_3_button =  tk.Button(left, text="Display all Playlists", command=lambda :handle_music_suggestion_menu_option_3(user_name), width = 25)
+    option_3_button = tk.Button(left, text="Display all Playlists", command=lambda :handle_music_suggestion_menu_option_3(user_name), width = 25)
     option_3_button.pack()
 
-    option_4_button =  tk.Button(left, text="Display all track of a playlist", command=lambda :handle_music_suggestion_menu_option_4(user_name), width = 25)
+    option_4_button = tk.Button(left, text="Display all track of a playlist", command=lambda :handle_music_suggestion_menu_option_4(user_name), width = 25)
     option_4_button.pack()
 
-    option_5_button =  tk.Button(left, text="Get Track Suggestions", command=lambda :handle_music_suggestion_menu_option_5(user_name), width = 25)
+    option_5_button = tk.Button(left, text="Get Track Suggestions", command=lambda :handle_music_suggestion_menu_option_5(user_name), width = 25)
     option_5_button.pack()
 
-    option_6_button =  tk.Button(left, text="Quit Music Suggestions", command=lambda :handle_music_suggestion_menu_option_6(), width = 25)
+    option_6_button = tk.Button(left, text="Change user", command=lambda :handle_music_suggestion_menu_option_6(), width = 25)
     option_6_button.pack()
 
-    musical_note_ascii = '''
-⠀⠀⠀⠀⠀⢀⣼⣿⣆⠀⠀⠀
-⠀⠀⠀⠀⠀⣾⡿⠛⢻⡆⠀⠀
-⠀⠀⠀⠀⢰⣿⠀⠀⢸⡇⠀⠀
-⠀⠀⠀⠀⠸⡇⠀⢀⣾⠇⠀⠀
-⠀⠀⠀⠀⠀⣿⣤⣿⡟⠀⠀⠀
-⠀⠀⠀⠀⣠⣾⣿⣿⠀⠀⠀⠀
-⠀⠀⣠⣾⣿⡿⣏⠀⠀⠀⠀⠀
-⠀⣴⣿⡿⠋⠀⢻⡉⠀⠀⠀⠀
-⢰⣿⡟⠀⢀⣴⣿⣿⣿⣿⣦⠀
-⢸⡿⠀⠀⣿⠟⠛⣿⠟⠛⣿⣧
-⠘⣿⡀⠀⢿⡀⠀⢻⣤⠖⢻⡿
-⠀⠘⢷⣄⠈⠙⠦⠸⡇⢀⡾⠃
-⠀⠀⠀⠙⠛⠶⠤⠶⣿⠉⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⢹⡇⠀⠀
-⠀⠀⢀⣴⣾⣿⣆⠀⠈⣧⠀⠀
-⠀⠀⠈⣿⣿⡿⠃⠀⣰⡏⠀⠀
-⠀⠀⠀⠈⣙⠓⠒⠚⠉⠀⠀⠀
-'''
+    option_7_button = tk.Button(left, text="Quit Music Suggestions", command=lambda :handle_music_suggestion_menu_option_7(), width = 25)
+    option_7_button.pack()
+
     musical_note_label = tk.Label(left, text=musical_note_ascii, font=("Courier", 8), justify="left")
     musical_note_label.pack();
 
@@ -257,7 +289,7 @@ def handle_adding_playlist_by_id(user_name):
 
     remove_widgets_from_root();
 
-    id_entry_label = tk.Label(root, text = 'Enter your spotify ID')
+    id_entry_label = tk.Label(root, text = 'Enter your spotify playlist ID')
     id_entry_label.pack();
 
     id_entry = tk.Entry(root, width = 20)
@@ -388,11 +420,84 @@ def msInsert_Playlist_Record_Into_Playlists(playlist_id, user_name):
 
 def handle_adding_playlist_by_url(user_name):
     
-    remove_widgets_from_root()
-    temp_label = tk.Label(root, text = 'Adding by URL')
-    temp_label.pack();
-    no_button = tk.Button(root, text="Return to main menu", command=lambda :handle_music_suggestion_menu(user_name), width = 25)
-    no_button.pack()
+    #handles adding playlist
+
+    remove_widgets_from_root();
+
+    url_entry_label = tk.Label(root, text = 'Enter your spotify Playlist URL')
+    url_entry_label.pack();
+
+    url_entry = tk.Entry(root, width = 20)
+    url_entry.pack();
+
+    url_submit_button = tk.Button(root, text="Submit", command=lambda :check_playlist_url_entry(user_name,url_entry.get()), width = 25)
+    url_submit_button.pack()
+
+    return_to_main_button = tk.Button(root, text="Return to main menu", command=lambda :handle_music_suggestion_menu(user_name), width = 25)
+    return_to_main_button.pack()
+
+def check_playlist_url_entry(user_name, url_entry):
+
+    remove_widgets_from_root();
+
+    playlist_id = '';
+    if url_entry != '':
+        
+        if url_entry.find('open.spotify.com/playlist/') != -1:
+
+            url_parts = url_entry.split('playlist/')[-1];
+            match = re.search(r'[^a-zA-Z0-9]', url_parts);
+
+            if match:
+
+                playlist_id = url_parts[:match.start()];
+            
+            else:
+
+                playlist_id = (url_parts);
+
+            if is_valid_playlist_id(playlist_id):
+
+                valid_id_label = tk.Label(root, text = 'Valid Spotify Playlist URL entered')
+                valid_id_label.pack();
+
+                add_playlist_label = tk.Label(root, text = 'Would you like to add this playlist to your records?')
+                add_playlist_label.pack();
+
+                url_button = tk.Button(root, text = "Yes", command=lambda: check_if_playlist_id_in_records(user_name,playlist_id),width = 25)
+                url_button.pack();
+
+                main_menu_button = tk.Button(root,text='No', command=lambda: handle_music_suggestion_menu(user_name), width = 25)
+                main_menu_button.pack();
+
+            else:
+                
+                not_valid_label = tk.Label(root, text = 'Invalid spotify url has been entered')
+                not_valid_label.pack();
+
+                re_entry_id_question_label = tk.Label(root, text = 'Would you like to re-enter new url or return to main menu?')
+                re_entry_id_question_label.pack();
+
+                id_button = tk.Button(root, text = "Try a different Spotify playlist url", command=lambda: handle_adding_playlist_by_url(user_name),width = 25)
+                id_button.pack();
+        
+        else:
+
+            empty_url_label = tk.Label(root, text = 'Invalid spotify url has been entered')
+            empty_url_label.pack()
+
+            id_button = tk.Button(root, text = "Try a different Spotify playlist url", command=lambda: handle_adding_playlist_by_url(user_name),width = 25)
+            id_button.pack();
+    
+    else:
+
+        empty_url_label = tk.Label(root, text = 'No spotify url has been entered')
+        empty_url_label.pack()
+        id_button = tk.Button(root, text = "Try a different Spotify playlist url", command=lambda: handle_adding_playlist_by_url(user_name),width = 25)
+        id_button.pack();
+    
+    main_menu_button = tk.Button(root,text='Return to main menu', command=lambda: handle_music_suggestion_menu(user_name), width = 25)
+    main_menu_button.pack();
 
 def handle_music_suggestion_menu_option_2(user_name):
     #handles music suggestion menu option 2
@@ -485,10 +590,6 @@ def handle_removing_playlist(user_name):
 def check_if_playlist_remove_entry_option_valid(user_name, entry_choice, playlists):
 
     remove_widgets_from_root()
-    entry_choice_label = tk.Label(root,text=entry_choice)
-    entry_choice_label.pack();
-    playlist_len_label = tk.Label(root,text=len(playlists))
-    playlist_len_label.pack();
 
     try:
         entry_choice = int(entry_choice)
@@ -640,19 +741,39 @@ def query_which_playlist_to_display_tracks(user_name):
         display_playlists_question_label.pack()
 
         playlist_names = msGet_all_playlist_names(playlists)
-        print(len(playlists))
 
-        i = 1;
-        for playlist in playlist_names:
+        if len(playlist_names) <= 19:
+            i = 1
+            for playlist in playlist_names:
+                playlist_name = sp.playlist(playlist)['name'];
+                playlist_name_numbered = str(i) + ') ' + playlist_name
+                playlist_label = tk.Label(root, text = playlist_name_numbered)
+                playlist_label.pack()
+                i+=1
+        elif len(playlist_names) > 19 and len(playlist_names)<=21:
+            i = 1
+            text_area = Frame(root)
+            text_area.pack(expand=True,fill="both")
+            for playlist in playlist_names:
 
-            playlist_name = sp.playlist(playlist)['name'];
+                playlist_name = sp.playlist(playlist)['name'];
+                playlist_name_v2 = str(i) + ') ' + playlist_name
 
-            playlist_name_v2 = str(i) + ') ' + playlist_name
+                playlist_name_label = ttk.Label(text_area, text=playlist_name_v2)
+                playlist_name_label.pack()
+                i += 1;
+        else:
+            i = 1
+            text_area = VerticalScrolledFrame(root)
+            text_area.pack(expand=True,fill="both")
+            for playlist in playlist_names:
 
-            playlist_option_label = tk.Label(root, text=playlist_name_v2)
-            playlist_option_label.pack()
+                playlist_name = sp.playlist(playlist)['name'];
+                playlist_name_v2 = str(i) + ') ' + playlist_name
 
-            i += 1
+                playlist_name_label = ttk.Label(text_area.interior, text=playlist_name_v2)
+                playlist_name_label.pack()
+                i += 1;
 
         playlist_entry_frame = tk.Frame(root)
         playlist_entry_frame.pack()
@@ -678,12 +799,9 @@ def check_if_playlist_track_display_option_valid(user_name, entry_choice,playlis
 
     remove_widgets_from_root()
 
-    #print(len(playlists))
     try:
         entry_choice = int(entry_choice)
         new_entry_choice = entry_choice - 1
-        print(len(playlists))
-
         if new_entry_choice < len(playlists) and new_entry_choice >= 0:
 
             playlist_id = playlists[new_entry_choice][0]
@@ -733,7 +851,7 @@ def display_all_tracks_using_specified_playlist(user_name,playlist_id):
 
     playlistTracks = playlist['tracks']['items'];
     
-    if len(playlistTracks) > 10:
+    if len(playlistTracks) > 19:
 
         text_area = VerticalScrolledFrame(root)
         text_area.pack(expand=True,fill="both")
@@ -745,6 +863,23 @@ def display_all_tracks_using_specified_playlist(user_name,playlist_id):
                 track_name = str(num_tracks) + ') ' + track['track']['name'];
                 track_name_wrap = textwrap.fill(track_name, width=50)
                 track_name_label = ttk.Label(text_area.interior, text=track_name_wrap)
+                track_name_label.pack()
+                num_tracks += 1;
+            
+            except:
+                pass
+
+    elif len(playlistTracks) <= 19 and len(playlistTracks) > 17:
+        text_area = Frame(root)
+        text_area.pack(expand=True,fill="both")
+        num_tracks = 1;
+
+        for track in playlistTracks:
+
+            try:
+                track_name = str(num_tracks) + ') ' + track['track']['name'];
+                track_name_wrap = textwrap.fill(track_name, width=50)
+                track_name_label = ttk.Label(text_area, text=track_name_wrap)
                 track_name_label.pack()
                 num_tracks += 1;
             
@@ -773,49 +908,499 @@ def handle_music_suggestion_menu_option_5(user_name):
     display_playlists_question_label = tk.Label(root, text=f'Would you like to get track suggestions for {user_name}?', justify="left")
     display_playlists_question_label.pack()
 
-    yes_button = tk.Button(root, text="Yes", command=lambda :get_track_suggestions(user_name), width = 25)
+    yes_button = tk.Button(root, text="Yes", command=lambda :handle_playlist_choice_for_track_suggestion(user_name), width = 25)
     yes_button.pack()
     no_button = tk.Button(root, text="No", command=lambda :handle_music_suggestion_menu(user_name), width = 25)
     no_button.pack()
 
-def get_track_suggestions(user_name):
+def handle_playlist_choice_for_track_suggestion(user_name):
     #gets track suggestions
 
     remove_widgets_from_root()
 
-    display_playlists_label = tk.Label(root, text=f'Getting track suggestions for {user_name}', justify="left")
-    display_playlists_label.pack()
+    user_id = ms_Get_Record_Of_User_In_Users_Table(user_name)
+    playlists = msGet_Playlists_Using_User_ID(user_id)
+    if playlists != []:
+        display_playlists_question_label = tk.Label(root, text='Which playlist would you like to get track suggestions?', justify="left")
+        display_playlists_question_label.pack()
+        playlist_names = msGet_all_playlist_names(playlists)
+        if len(playlist_names) <= 17:
+            i = 1
+            for playlist in playlist_names:
+                playlist_name = sp.playlist(playlist)['name'];
+                playlist_name_numbered = str(i) + ') ' + playlist_name
+                playlist_label = tk.Label(root, text = playlist_name_numbered)
+                playlist_label.pack()
+                i+=1
+        elif len(playlist_names) > 17 and len(playlist_names)<=19:
+            i = 1
+            text_area = Frame(root)
+            text_area.pack(expand=True,fill="both")
+            for playlist in playlist_names:
+
+                playlist_name = sp.playlist(playlist)['name'];
+                playlist_name_v2 = str(i) + ') ' + playlist_name
+
+                playlist_name_label = ttk.Label(text_area, text=playlist_name_v2)
+                playlist_name_label.pack()
+                i += 1;
+        else:
+            i = 1
+            text_area = VerticalScrolledFrame(root)
+            text_area.pack(expand=True,fill="both")
+            for playlist in playlist_names:
+
+                playlist_name = sp.playlist(playlist)['name'];
+                playlist_name_v2 = str(i) + ') ' + playlist_name
+
+                playlist_name_label = ttk.Label(text_area.interior, text=playlist_name_v2)
+                playlist_name_label.pack()
+                i += 1;
+        
+        playlist_entry_frame = tk.Frame(root)
+        playlist_entry_frame.pack()
+
+        playlist_entry_label = tk.Label(playlist_entry_frame, text='Playlist Choice')
+        playlist_entry_label.pack(side='left')
+
+        playlist_entry = tk.Entry(playlist_entry_frame)
+        playlist_entry.pack(side = 'left')
+
+        playlist_entry_submit = tk.Button(root, text = 'Submit',command=lambda:check_if_playlist_track_suggestion_option_valid(user_name,playlist_entry.get(), playlists))
+        playlist_entry_submit.pack()
+            
+    else:
+        empty_playlists_label = tk.Label(root, text = 'You need at least one playlist saved to display playlist names')
+        empty_playlists_label.pack()
 
     return_to_main_menu_button = tk.Button(root, text="Return to main menu", command=lambda :handle_music_suggestion_menu(user_name), width = 25)
     return_to_main_menu_button.pack()
 
+def check_if_playlist_track_suggestion_option_valid(user_name, entry_choice, playlists):
+    remove_widgets_from_root()
+
+    try:
+        entry_choice = int(entry_choice)
+        new_entry_choice = entry_choice - 1
+
+        if new_entry_choice < len(playlists) and new_entry_choice >= 0:
+
+            playlist_id = playlists[new_entry_choice][0]
+            playlist_name = sp.playlist(playlist_id)['name']
+            
+            playlist_choice_valid_label = tk.Label(root, text='Valid choice entered')
+            playlist_choice_valid_label.pack()
+
+            playlist_display_question_label = tk.Label(root, text = 'Do you want to get track suggestions for the playlist below?')
+            playlist_display_question_label.pack()
+
+            playlist_name_label = tk.Label(root, text=playlist_name)
+            playlist_name_label.pack()
+
+            yes_for_display_button = tk.Button(root, text='Yes',command=lambda :handle_random_or_specific_artist_choice(user_name,playlist_id), width = 25)
+            yes_for_display_button.pack();
+            
+        else:
+
+            label = tk.Label(root,text ='Invalid entry entered. Continue with one of the options listed below.')
+            label.pack();
+
+            return_to_playlist_track_display_choice_button = tk.Button(root,text = 'Return to playlist track suggestion choice', command=lambda: handle_playlist_choice_for_track_suggestion(user_name))
+            return_to_playlist_track_display_choice_button.pack()
+    
+    except (ValueError, AttributeError):
+
+        invalid_entry_label = tk.Label(root,text='Please enter a valid number for choosing playlist')
+        invalid_entry_label.pack();
+
+        return_to_playlist_choice_button = tk.Button(root, text='Return to Playlist Choice', command=lambda: handle_playlist_choice_for_track_suggestion(user_name), width = 25)
+        return_to_playlist_choice_button.pack();
+
+    return_to_main_menu_button = tk.Button(root, text="Return to main menu", command=lambda :handle_music_suggestion_menu(user_name), width = 25)
+    return_to_main_menu_button.pack()
+def handle_random_or_specific_artist_choice(user_name,playlist_id):
+    
+    remove_widgets_from_root();
+
+    track_suggestion_type_question_label = tk.Label(root, text = 'Choose one of the options below to choose between specific or random')
+    track_suggestion_type_question_label.pack()
+
+    random_artist_suggestion_button = tk.Button(root, text = 'Random Artist', command=lambda:handle_top_or_all_tracks_query(user_name,playlist_id,'random'))
+    random_artist_suggestion_button.pack();
+
+    specific_artist_suggestion_button = tk.Button(root, text = 'Specific Artist', command=lambda:handle_top_or_all_tracks_query(user_name,playlist_id,'specific'))
+    specific_artist_suggestion_button.pack();
+
+    return_to_main_menu_button = tk.Button(root, text="Return to main menu", command=lambda :handle_music_suggestion_menu(user_name), width = 25)
+    return_to_main_menu_button.pack()
+
+def handle_top_or_all_tracks_query(user_name, playlist_id, artist_type):
+
+    remove_widgets_from_root();
+
+    track_suggestion_type_question_label = tk.Label(root, text = 'Choose between all or top tracks of the artist')
+    track_suggestion_type_question_label.pack()
+
+    all_track_suggestion_button = tk.Button(root, text = 'All Tracks', command=lambda:handle_track_suggestions(user_name,playlist_id, artist_type,'all'))
+    all_track_suggestion_button.pack();
+
+    top_track_suggestion_button = tk.Button(root, text = 'Top Tracks', command=lambda:handle_track_suggestions(user_name,playlist_id, artist_type,'top'))
+    top_track_suggestion_button.pack();
+
+    return_to_main_menu_button = tk.Button(root, text="Return to main menu", command=lambda :handle_music_suggestion_menu(user_name), width = 25)
+    return_to_main_menu_button.pack()
+
+def handle_track_suggestions(user_name, playlist_id, artist_type, track_type):
+
+    remove_widgets_from_root()
+
+    playlist_artist_dict = get_playlist_artist_dict(playlist_id);
+
+    artist_list = [];
+    artist_id = '';
+    num_artists = 1;
+
+    for artist in playlist_artist_dict:
+        artist_list.append([artist]);
+        num_artists += 1;
+        
+    if artist_type == 'random':
+        
+        artist_choice = random.randint(1,num_artists);
+        artist_id = artist_list[artist_choice-1][0];
+        songs_list = get_Songs_From_Playlist_From_Specific_Artist(artist_id,playlist_id)
+
+        random_artist_name_label = tk.Label(root, text = f'Artist {playlist_artist_dict[artist_id]} has been picked at random')
+        random_artist_name_label.pack()
+
+        if track_type == 'all':
+            
+            total_track_text_label = tk.Label(root,text ='Suggested songs to add/listen to from all their tracks');
+            total_track_text_label.pack()
+
+            tracks = get_All_Artist_Songs(artist_id)
+            print_List_of_Ten_Random_All_Tracks_Not_In_Playlist(tracks, songs_list)
+
+        else:
+
+            top_track_text_label = tk.Label(root,text ='Suggested songs to add/listen to from their top tracks');
+            top_track_text_label.pack()
+
+            tracks = sp.artist_top_tracks(artist_id)['tracks'];
+            handle_artist_top_track_suggestion(tracks, songs_list)
+
+        return_to_main_menu_button = tk.Button(root, text="Return to main menu", command=lambda :handle_music_suggestion_menu(user_name), width = 25)
+        return_to_main_menu_button.pack()   
+
+    else:
+
+        playlist_name = sp.playlist(playlist_id)['name']
+
+        artist_names_list_label = tk.Label(root, text = f'Artists in playlist {playlist_name}', justify = 'left')
+        artist_names_list_label.pack();
+
+        pad = playlist_artist_dict 
+        
+        if len(artist_list) > 19:
+            
+            text_area = VerticalScrolledFrame(root)
+            text_area.pack(expand=True,fill="both")   
+            i = 1;
+            for artist in pad:
+                print(type(artist))
+                if(isinstance(artist, str)):
+                    artist_name = sp.artist(artist)['name']
+                    
+                    artist_name_numbered = str(i) + ') ' + artist_name
+
+                    artist_name_label = ttk.Label(text_area.interior , text = artist_name_numbered)
+                    artist_name_label.pack()
+                    i+=1;
+
+        elif len(artist_list) > 17 and len(artist_list) <= 19:
+            i = 1;
+            text_area = Frame(root, borderwidth = 1)
+            text_area.pack(expand=True,fill="both")
+
+            for artist in pad:
+                if(isinstance(artist, str)):
+                    artist_name = sp.artist(artist)['name']
+                    artist_name_numbered = str(i) + ') ' + artist_name
+
+                    artist_name_label = ttk.Label(text_area , text = artist_name_numbered)
+                    artist_name_label.pack()
+                    i+=1;
+                
+        else:
+            i = 1;
+            for artist in pad:
+                if(isinstance(artist, str)):
+                    artist_name = sp.artist(artist)['name']
+                    artist_name_numbered = str(i) + ') ' + artist_name
+
+                    artist_name_label = tk.Label(root, text = artist_name_numbered)
+                    artist_name_label.pack()
+                    i+=1;
+
+        artist_entry_frame = tk.Frame(root)
+        artist_entry_frame.pack()
+
+        artist_entry_label = tk.Label(artist_entry_frame, text='Playlist Choice')
+        artist_entry_label.pack(side='left')
+
+        artist_entry = tk.Entry(artist_entry_frame)
+        artist_entry.pack(side = 'left')
+
+        playlist_entry_submit = tk.Button(root, text = 'Submit',command=lambda:handle_music_suggestion_specific_artist(user_name,artist_entry.get(),playlist_id, track_type,artist_list, artist_type))
+        playlist_entry_submit.pack()
+
+        return_to_main_menu_button = tk.Button(root, text="Return to main menu", command=lambda :handle_music_suggestion_menu(user_name), width = 25)
+        return_to_main_menu_button.pack() 
+
+def handle_music_suggestion_specific_artist(user_name, artist_choice, playlist_id, track_type, artist_list, artist_type):
+
+    remove_widgets_from_root()
+
+    try:
+
+        entry_choice = int(artist_choice)
+
+        new_entry_choice = entry_choice - 1
+
+        if new_entry_choice < len(artist_list) and new_entry_choice >= 0:
+
+            artist_id = artist_list[new_entry_choice][0];
+
+            songs_list = get_Songs_From_Playlist_From_Specific_Artist(artist_id,playlist_id)
+            
+            if track_type == 'all':
+
+                total_track_text_label = tk.Label(root,text ='Suggested songs to add/listen to from all their tracks');
+                total_track_text_label.pack()
+
+                tracks = get_All_Artist_Songs(artist_id)
+                print_List_of_Ten_Random_All_Tracks_Not_In_Playlist(tracks, songs_list)   
+                
+            else:
+
+                top_track_text_label = tk.Label(root,text ='Suggested songs to add/listen to from their top tracks');
+                top_track_text_label.pack()
+
+                tracks = sp.artist_top_tracks(artist_id)['tracks'];
+                handle_artist_top_track_suggestion(tracks, songs_list)
+
+        else:
+
+            invalid_entry_label = tk.Label(root,text='Please enter a valid number for choosing artist')
+            invalid_entry_label.pack();
+    
+            return_to_artist_choice_button = tk.Button(root, text='Return to Artist Choice', command=lambda:  handle_track_suggestions(user_name, playlist_id, artist_type, track_type), width = 25)
+            return_to_artist_choice_button.pack();
+
+    except (ValueError, AttributeError):
+        invalid_entry_label = tk.Label(root,text='Please enter a valid number for choosing artist')
+        invalid_entry_label.pack();
+
+        return_to_artist_choice_button = tk.Button(root, text='Return to Artist Choice', command=lambda:  handle_track_suggestions(user_name, playlist_id, artist_type, track_type), width = 25)
+        return_to_artist_choice_button.pack();
+       
+    return_to_main_menu_button = tk.Button(root, text="Return to main menu", command=lambda :handle_music_suggestion_menu(user_name), width = 25)
+    return_to_main_menu_button.pack()    
+
+def handle_artist_top_track_suggestion(tracks, songs_list):
+    #prints tracks not in songs list
+
+    for track in tracks:
+            if track['name'] not in songs_list:
+                track_name = tk.Label(root, text = track['name'])
+                track_name.pack()
+
 def handle_music_suggestion_menu_option_6():
     #exits the program
+    handle_initial_menu()
 
+def handle_music_suggestion_menu_option_7():
+    
     root.destroy()
- 
-def get_login_result_label():  
+
+def get_login_result_label():
+
     text_var = tk.StringVar(value="")
     label = tk.Label(root, text=text_var)
     label.place(x = 50, y = 75)
     return label
 
+def get_playlist_artist_dict(playlist_id):
+    
+    artist_id_list = {};
+    playlist =  sp.playlist(playlist_id);
+    playlistTracks = playlist['tracks']['items'];
+
+    for track in playlistTracks:
+        try:
+            temp = track['track']['artists'][0]['id'];
+            tempName = track['track']['artists'][0]['name'];
+            artist_id_list[temp] = tempName;
+        except:
+            pass
+    new_artist_id_list = dict(sorted(artist_id_list.items(), key = lambda item: item[1]));        
+    return new_artist_id_list
+            
+def get_Songs_From_Playlist_From_Specific_Artist(artist_id,playlist_id):
+    #returns list of specific artist songs in specific playlist
+
+    songs_list = [];
+    playlist= sp.playlist(playlist_id);
+    playlistTracks = playlist['tracks']['items'];
+
+    for track in playlistTracks:
+        try:
+            specific_track = track['track']['artists'][0];
+            if specific_track['id'] == artist_id:
+                songs_list.append(track['track']['name']);
+        except:
+            pass
+        
+    return songs_list;
+
+def get_All_Artist_Songs(artist_id):
+    #returns a list of all songs of a specific artist using their artist_id
+
+    songs = []
+
+    # Get artist's albums
+    albums = sp.artist_albums(artist_id, album_type='album,single,appears_on')
+    for album in albums['items']:
+        # Get tracks for each album
+        tracks = sp.album_tracks(album['id'])
+        for track in tracks['items']:
+            songs.append(track['name']);
+
+    return songs;
+
+def print_List_of_Ten_Random_All_Tracks_Not_In_Playlist(tracks, songs_list):
+
+#prints ten random tracks of a specific artists tracks not in songs list
+
+    songs_not_in_list = [];
+    for track in tracks:
+        if track not in songs_list:
+            songs_not_in_list.append(track);
+    size = len(songs_not_in_list);
+    if size < 11:
+        i = 1;
+        for track in songs_not_in_list:
+            track_numbered = str(i) + ') ' + track
+            track_name_label = tk.Label(root, text=track_numbered)
+            track_name_label.pack()
+    else:
+        num_tracks = 1;
+        index_list = [];
+        while num_tracks < 11:
+            random_index =  random.randint(0, len(songs_not_in_list)-1);
+            if random_index not in index_list:
+                track_numbered = str(num_tracks) + ') ' + songs_not_in_list[random_index] 
+                track_name_label = tk.Label(root, text=track_numbered)
+                track_name_label.pack()
+                index_list.append(random_index);
+                num_tracks += 1;
+
+def handle_initial_menu():
+
+    remove_widgets_from_root()
+
+    music_suggestion_label = tk.Label(root, text = 'Music Suggestion')
+    music_suggestion_label.config(font=("Courier", 25))
+    music_suggestion_label.place(x = 17, y = 25)
+
+    musical_note_label = tk.Label(root, text=musical_note_ascii, font=("Courier", 8), justify="left")
+    musical_note_label.place(x = 125, y = 65)
+
+    new_user_button = tk.Button(root, text = 'Create New User', command=lambda: handle_create_new_user(), width = 15)
+    new_user_button.place(x = 60, y = 350)
+
+    existing_user_button = tk.Button(root, text = 'Existing User', command=lambda: handle_login_existing(), width = 15)
+    existing_user_button.place(x = 180, y = 350)
+
+    developer_name_label = tk.Label(root,text = 'Developed by Yuriy Dashevskiy')
+    developer_name_label.place(x = 100, y = 425)
+
+def handle_login_existing(login_status = ''):
+
+    remove_widgets_from_root()
+
+    music_note_label = tk.Label(root, text = musical_note_ascii)
+    music_note_label.place(x = 20, y = 65)
+    new_user_label = tk.Label(root, text = 'Existing User')
+    new_user_label.config(font=("Courier", 33))
+    new_user_label.place(x = 5, y = 20)
+
+    label1 = tk.Label(root, text="User Name:")
+    label1.place(x=140, y=170)
+    user_name_entry = tk.Entry(root, width = 17)
+    user_name_entry.place(x=225, y=170)
+
+    password_label = tk.Label(root, text="Password:")
+    password_label.place(x=140, y=190)
+    password_entry = tk.Entry(root, show = "*", width= 17)
+    password_entry.place(x=225, y=190)
+
+    if login_status != '':
+        label3 = tk.Label(root, text=login_status)
+        label3.place(x=140, y=140)
+    
+    login_button = tk.Button(root, text="Submit", command=lambda :on_login_button_pressed(user_name_entry.get(), password_entry.get()))
+    login_button.place(x=225,y=220)
+
+    new_user_button = tk.Button(root, text = 'Create New User', command=lambda: handle_create_new_user())
+    new_user_button.place(x=230, y=410)
+
+    main_menu_button = tk.Button(root, text = 'Main Menu', command=lambda:handle_initial_menu())
+    main_menu_button.place(x=20, y=410)
+
+def handle_create_new_user(create_status = ''):
+
+    remove_widgets_from_root()
+    
+    music_note_label = tk.Label(root, text = musical_note_ascii)
+    music_note_label.place(x = 20, y = 65)
+    new_user_label = tk.Label(root, text = 'New User')
+    new_user_label.config(font=("Courier", 33))
+    new_user_label.place(x = 70, y = 20)
+
+    label1 = tk.Label(root, text="User Name:")
+    label1.place(x=140, y=170)
+    user_name_entry = tk.Entry(root, width = 17)
+    user_name_entry.place(x=225, y=170)
+
+    password_label = tk.Label(root, text="Password:")
+    password_label.place(x=140, y=190)
+    password_entry = tk.Entry(root, show = "*", width= 17)
+    password_entry.place(x=225, y=190)
+
+    password_confirm_label = tk.Label(root, text="Confirm Pass:")
+    password_confirm_label.place(x=140, y=210)
+    password_confirm_entry = tk.Entry(root, show = "*", width= 17)
+    password_confirm_entry.place(x=225, y=210)
+
+    if create_status != '':
+        label3 = tk.Label(root, text=create_status)
+        label3.place(x=140, y=140)
+    
+    submit_button = tk.Button(root, text="Submit", command=lambda :on_create_button_pressed(user_name_entry.get(), password_entry.get(), password_confirm_entry.get()))
+    submit_button.place(x=225,y=240)
+
+    existing_user_button = tk.Button(root, text = 'Login Existing', command=lambda: handle_login_existing())
+    existing_user_button.place(x=250, y=410)
+
+    main_menu_button = tk.Button(root, text = 'Main Menu', command=lambda:handle_initial_menu())
+    main_menu_button.place(x=20, y=410)
+
 def main():
 
     # Create labels and entry fields
-    label1 = tk.Label(root, text="User Name:")
-    label1.place(x=5, y=10)
-    entry1 = tk.Entry(root, width = 20)
-    entry1.place(x=70, y=10)
 
-    label2 = tk.Label(root, text="Password:")
-    label2.place(x=5, y=35)
-    entry2 = tk.Entry(root, show = "*", width= 20)
-    entry2.place(x=70, y=35)
-    label3 = tk.Label(root, text="Login Result:")
-    label3.place(x=5, y=100)
-    button = tk.Button(root, text="Submit", command=lambda :on_login_button_pressed(entry1, entry2))
-    button.place(x=75, y=60)
+    handle_initial_menu()
     root.mainloop()
 
 main();

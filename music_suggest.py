@@ -613,7 +613,7 @@ def msGet_Playlist_Artist_Sorted_Dictionary(playlist_id):
 
     new_artist_id_list = dict(sorted(artist_id_list.items(), key = lambda item: item[1]));
 
-    return artist_id_list;
+    return new_artist_id_list;
 
 def msPost_login_Menu(user_name):
     #handles menu after logging in
