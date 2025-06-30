@@ -1,9 +1,9 @@
-## Spotify Song Suggestion
+# Spotify Song Suggestion
 ---
-# Overview 
+## Overview 
  - Project was created to help determine spotify song suggestions using spotify playlists
 ---
-# Dataset <br/>
+## Dataset <br/>
 - Spotify Data is gathered utilizing [Spotipy](https://github.com/spotipy-dev/spotipy) for spotify api calls <br/>
 - Playlist IDs are stored locally in SQLite DB through the user adding the playlist url/id in the program
 
@@ -19,11 +19,11 @@ Users Table Records Example <br/>
 - Passwords stored in hash format for an extra level of security
 - Note that passwords were removed from screenshot for security purpose
 ---
-# Tools
+## Tools
 * Python - Scripting language utilized for handling music suggestions and used TKinter for creating gui front end
 * SQL - Stored custom user login and user playlists for spotify music suggestion in a SQLite DB
 ---
-# Screenshots
+## Screenshots
 Initial Screen <br/>
 ![image](https://github.com/user-attachments/assets/bb929672-0973-40c5-841e-d77a5a223724)
 
@@ -41,3 +41,7 @@ All Tracks or Top Tracks Option Screen <br/>
 
 Track Suggestion Screen <br/>
 ![image](https://github.com/user-attachments/assets/53d4bff1-3350-43d9-b386-024311eea149)
+
+## Future Improvements
+* Reduce load time when user has too many playlists saved
+* Offer additional options when suggestion music (ex: giving user ability to enter artist name without needing playlist id)
